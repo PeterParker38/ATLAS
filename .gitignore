@@ -1,0 +1,8 @@
+/build/
+/tmp/
+/.cache/
+/.env
+*.log
+__pycache__/
+.vscode/
+!/.env.example

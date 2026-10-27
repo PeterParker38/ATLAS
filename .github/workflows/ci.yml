@@ -1,0 +1,48 @@
+name: C++ and TCP checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  cpp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [debug, release, asan]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y g++ cmake ninja-build libasio-dev python3
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }} --parallel 2
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build and start local container
+        run: docker compose up --build --detach --wait --wait-timeout 90
+      - name: Smoke test
+        run: |
+          docker compose exec -T node atlas-cli ping
+          docker compose exec -T node atlas-cli put ci-key ci-value
+          test "$(docker compose exec -T node atlas-cli get ci-key)" = ci-value
+          docker compose exec -T node atlas-cli delete ci-key
+      - name: Logs and cleanup
+        if: always()
+        run: |
+          docker compose logs
+          docker compose down
